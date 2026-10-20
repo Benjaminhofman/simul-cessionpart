@@ -102,6 +102,7 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
         <label>Frais de cession supportés (€)<input id="fraisCess" type="number" value="6000" min="0"></label>
         <label>Prix d'acquisition + frais (€)<input id="pa" type="number" value="100000" min="0"></label>
         <label>Date d'acquisition<input id="dAcq" type="date" value="2014-03-01"></label>
+        <label>Date de création de la société (facultatif, test des 10 ans PME)<input id="dCrea" type="date"></label>
         <label>Date de cession<input id="dCess" type="date" value="2026-10-15"></label>
         <label>Moins-values reportables (€)<input id="mv" type="number" value="0" min="0"></label>
         <label>Revenu net imposable du foyer hors PV (€)<input id="rni" type="number" value="40000" min="0"></label>
@@ -450,7 +451,7 @@ function detailText(S,titre){
 
 let synth='', detText='', sel=null, lastV=null;
 function run(){
-  const i={forme:$('forme').value,prix:nv('prix'),fraisCess:nv('fraisCess'),pa:nv('pa'),dAcq:$('dAcq').value,dCess:$('dCess').value,
+  const i={forme:$('forme').value,prix:nv('prix'),fraisCess:nv('fraisCess'),pa:nv('pa'),dAcq:$('dAcq').value,dCrea:$('dCrea').value,dCess:$('dCess').value,
     mv:nv('mv'),rni:nv('rni'),sit:$('sit').value,pac:nv('pac'),rfrX:nv('rfrX'),rfr1:$('rfr1').value===''?null:nv('rfr1'),rfr2:$('rfr2').value===''?null:nv('rfr2'),nbp:Math.max(1,nv('nbp')),pme:$('pme').checked,retr:$('retr').checked,
     nCed:nv('nCed'),nTot:Math.max(1,nv('nTot')),charges:nv('charges'),fraisAcq:nv('fraisAcq'),fonds:nv('fonds'),
     immo:$('immo').checked,a732:$('a732').checked};
@@ -486,9 +487,23 @@ function run(){
   const ecoL=v.scen.filter(x=>x.ecoCsg>0&&x.label.indexOf('Barème')===0).map(x=>x.label+' : CSG déductible '+eur(x.csgDed)+', économie d\'IR N+1 estimée '+eur(x.ecoCsg)).join(' ; ');
   $('ecoCsg').textContent=ecoL?('Indicatif, hors totaux (option barème uniquement, déduction sur le revenu N+1, estimée au même barème) : '+ecoL+'.'):'';
   { const el=$('alertPme'), ab=v.ab;
-    if(ab.eligible && ab.ans>=8 && ab.ans<10 && !i.pme){
+    const dOk=!!i.dCrea&&!isNaN(new Date(i.dCrea)), incoh=dOk&&new Date(i.dCrea)>new Date(i.dAcq);
+    const ageAcq=(dOk&&!incoh)?annees(i.dCrea,i.dAcq):null, moins10=ageAcq!==null&&ageAcq<10;
+    if(incoh){
       el.hidden=false;
-      el.textContent='Attention : titres détenus depuis '+ab.ans+' ans. Si la société avait moins de 10 ans à la date d\'acquisition des titres et remplit les autres conditions PME, l\'abattement renforcé de 85 % peut s\'appliquer au lieu de 65 % : cochez la case ci-dessous.';
+      el.textContent='Incohérence : la date de création de la société est postérieure à la date d\'acquisition des titres.';
+    } else if(dOk&&ab.eligible&&ab.ans>=8&&!i.pme&&moins10){
+      el.hidden=false;
+      el.textContent='Abattement renforcé de 85 % possible : société créée le '+i.dCrea.split('-').reverse().join('/')+', soit '+ageAcq+' an(s) à l\'acquisition des titres (moins de 10 ans) et titres détenus depuis '+ab.ans+' ans. Cochez la case ci-dessous, sous réserve des autres conditions PME (UE, activité opérationnelle, option barème).';
+    } else if(dOk&&ab.eligible&&ab.ans>=8&&!i.pme&&!moins10){
+      el.hidden=false;
+      el.textContent='Abattement renforcé de 85 % non applicable : la société avait '+ageAcq+' ans à l\'acquisition des titres (10 ans ou plus). Abattement de droit commun : 65 %.';
+    } else if(dOk&&i.pme&&!moins10){
+      el.hidden=false;
+      el.textContent='Case PME cochée mais la société avait '+ageAcq+' ans à l\'acquisition des titres (10 ans ou plus) : l\'abattement renforcé ne devrait pas s\'appliquer. Décochez la case.';
+    } else if(!dOk&&ab.eligible && ab.ans>=8 && !i.pme){
+      el.hidden=false;
+      el.textContent='Attention : titres détenus depuis '+ab.ans+' ans. Si la société avait moins de 10 ans à la date d\'acquisition des titres (son âge à la cession importe peu) et remplit les autres conditions PME, l\'abattement renforcé de 85 % peut s\'appliquer au lieu de 65 % : cochez la case ci-dessous.';
     } else { el.hidden=true; el.textContent=''; }
   }
   $('alertes').innerHTML=alertes(i,v).map(x=>`<div class="alert">${x}</div>`).join('');
