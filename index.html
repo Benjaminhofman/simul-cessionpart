@@ -56,6 +56,8 @@ tr.tot td{font-weight:600;border-top:2px solid var(--fg)}
 .kpi b{font-family:'IBM Plex Mono',monospace;font-size:1.3rem;font-weight:500}
 .alerts{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .alert{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:8px 12px;font-size:.85rem}
+.alert.bad{background:var(--bad-bg);color:var(--bad)}
+.alert.good{background:var(--good-bg);color:var(--good)}
 button{font:inherit;background:var(--accent);color:var(--accent-fg);border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:500}
 details summary{cursor:pointer;font-weight:600}
 .f{font-family:'IBM Plex Mono',monospace;font-size:.82rem;background:var(--bg);padding:8px 10px;border-radius:6px;margin:6px 0;overflow-x:auto;white-space:pre}
@@ -83,7 +85,7 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
 <div class="wrap">
   <header>
     <h1>Coût d'une cession de parts de SARL ou d'actions de SAS</h1>
-    <p class="sub">Vendeur : impôt sur la plus-value (PFU, barème avec abattements, abattement dirigeant retraite) et prélèvements sociaux. Acheteur : droits d'enregistrement et frais. Société à l'IS. Valeurs saisies = exemple, à remplacer.</p>
+    <p class="sub">Vendeur : impôt sur la plus-value (PFU, barème avec abattements, abattement dirigeant retraite) et prélèvements sociaux. Acheteur : droits d'enregistrement et frais. Société à l'IS. Valeurs saisies = exemple, à remplacer. Cessions réalisées à compter du 1er janvier 2026 uniquement.</p>
   </header>
 
   <nav class="tabs" role="tablist">
@@ -103,7 +105,7 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
         <label>Prix d'acquisition + frais (€)<input id="pa" type="number" value="100000" min="0"></label>
         <label>Date d'acquisition<input id="dAcq" type="date" value="2014-03-01"></label>
         <label>Date de création de la société (facultatif, test des 10 ans PME)<input id="dCrea" type="date"></label>
-        <label>Date de cession<input id="dCess" type="date" value="2026-10-15"></label>
+        <label>Date de cession (à compter du 01/01/2026)<input id="dCess" type="date" value="2026-10-15" min="2026-01-01"></label>
         <label>Moins-values reportables (€)<input id="mv" type="number" value="0" min="0"></label>
         <label>Revenu net imposable du foyer hors PV (€)<input id="rni" type="number" value="40000" min="0"></label>
         <label>Nombre de parts de quotient familial<input id="nbp" type="number" value="2" min="1" step="0.5"></label>
@@ -112,10 +114,12 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
         <label>Autres réintégrations au RFR hors PV (€)<input id="rfrX" type="number" value="0" min="0"></label>
         <label>RFR N-1 (€, lissage CEHR, facultatif)<input id="rfr1" type="number" placeholder="vide = sans lissage" min="0"></label>
         <label>RFR N-2 (€, lissage CEHR, facultatif)<input id="rfr2" type="number" placeholder="vide = sans lissage" min="0"></label>
+        <label>Moyenne des revenus nets des 3 dernières années (€, test du revenu exceptionnel CDHR, facultatif)<input id="moy3" type="number" placeholder="vide = condition non vérifiée" min="0"></label>
       </div>
       <div class="opts">
         <div class="redalert" id="alertPme" hidden></div>
         <label class="chk"><input id="pme" type="checkbox"><span><b>Abattement renforcé PME (150-0 D, 1 quater)</b><small>Société créée depuis moins de 10 ans à l'acquisition des titres (son âge à la cession importe peu), PME UE à cette date, activité opérationnelle, titres acquis avant 2018, option barème.</small></span></label>
+        <label class="chk"><input id="exc" type="checkbox"><span><b>Plus-value exceptionnelle (CDHR : retenue pour 1/4)</b><small>Opération ponctuelle, sans cessions de même nature avant et après, et plus-value imposable supérieure à la moyenne des revenus nets des 3 dernières années (art. 224, II ; BOI-IR-CDHR-20). Réduit seulement le calcul de la CDHR : l'IR, les prélèvements sociaux et la CEHR dus ne changent pas, et aucune imposition sur d'autres années.</small></span></label>
         <label class="chk"><input id="retr" type="checkbox"><span><b>Abattement fixe dirigeant retraite (150-0 D ter)</b><small>500 000 €. Direction et 25 % des droits depuis 5 ans, cession de la totalité ou de plus de 50 % des droits de vote, PME, retraite sous 2 ans, titres détenus depuis 1 an. Non cumulable avec les abattements de durée.</small></span></label>
       </div>
     </section>
@@ -141,6 +145,7 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
   <section class="panel">
     <h2>Résultat</h2>
     <div class="big" id="kpis"></div>
+    <div class="alerts" id="alerteBareme"></div>
     <h3>Vendeur : synthèse par régime</h3>
     <div class="scroll"><table id="tabV"></table></div>
     <div class="alerts" id="alertes"></div>
@@ -153,7 +158,7 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
     <details>
       <summary>Afficher / modifier les paramètres</summary>
       <div class="fields" style="margin-top:12px" id="params"></div>
-      <p class="note">Statuts : « vérifié » = lu dans le BOFiP ou le texte, ou confirmé par l'utilisateur et par le simulateur impots.gouv (18,6 % dès les revenus 2025) ; « à valider » = source secondaire ou non relue. Barème IR revenus 2025 (11 600 / 29 579 / 84 577 / 181 917 €). Plafonnement du quotient familial et décote non modélisés. CDHR : art. 224 CGI (20 % du RFR, décote jusqu'à 330 000 / 660 000 €, quart des revenus non récurrents non modélisé). CEHR : art. 223 sexies (3 % et 4 %, seuils 250 000 / 500 000 € pour une personne seule, 500 000 / 1 000 000 € pour un couple, lissage du II).</p>
+      <p class="note">Statuts : « vérifié » = lu dans le BOFiP ou le texte, ou confirmé par l'utilisateur et par le simulateur impots.gouv (18,6 % dès les revenus 2025) ; « à valider » = source secondaire ou non relue. Barème IR revenus 2025 (11 600 / 29 579 / 84 577 / 181 917 €). Plafonnement du quotient familial et décote non modélisés. CDHR : art. 224 CGI (20 % du RREF, décote jusqu'à 330 000 / 660 000 €, quart des revenus exceptionnels sur case à cocher, CEHR1 minorée de l'abattement fixe). Simulateur limité aux cessions à compter du 1er janvier 2026. CEHR : art. 223 sexies (3 % et 4 %, seuils 250 000 / 500 000 € pour une personne seule, 500 000 / 1 000 000 € pour un couple, lissage du II).</p>
     </details>
   </section>
 
@@ -180,7 +185,7 @@ table.dl tr.key td{font-weight:600;background:var(--soft)}
 <script>
 // ENGINE-START
 const P = {
-  pfuIR:12.8, ps:18.6, ps2025:17.2, csgDed:6.8,
+  pfuIR:12.8, ps:18.6, csgDed:6.8,
   droitSAS:0.1, droitSARL:3, abattSARL:23000, droitImmo:5, minPerc:25,
   a732:500000, aFixe:500000,
   seuils:[11600,29579,84577,181917], taux:[11,30,41,45]
@@ -243,7 +248,7 @@ function vendeur(i){
   const pv=Math.max(0,pvBrute-i.mv);
   const ab=tauxAbattement(i.dAcq,i.dCess,i.pme);
   const yC=new Date(i.dCess).getFullYear();
-  const tPS=(!isNaN(yC)&&yC<2025)?P.ps2025:P.ps;
+  const tPS=P.ps;   // simulateur limité aux cessions à compter de 2026
   const ps=pv*tPS/100;
   const irBase=irParts(i.rni,i.nbp);
   const scen=[];
@@ -267,9 +272,26 @@ function vendeur(i){
   const couple=i.sit!=='seul', cehrPlain=cehr(rfr,couple,null,null).c;
   scen.forEach(s=>{
     const irg=(s.irGross!==undefined)?s.irGross:s.ir;
-    const R=rfr-(s.fixe?Math.min(pv,P.aFixe):0);
-    s.irPur=irg; s.R=R;
-    s.cehr=ce.c; s.cdhr=cdhr(R,couple,irBase+irg+cehrPlain,i.pac);
+    const fixeAmt=s.fixe?Math.min(pv,P.aFixe):0;
+    const E=pv-fixeAmt;                                   // revenu net retenu dans le RREF avant le quart
+    const cond=(i.moy3==null)||(s.base>i.moy3);           // condition de montant (BOI-IR-CDHR-20, §60-70)
+    const qt=!!i.exc&&cond&&E>0;                          // revenu exceptionnel : quart (art. 224, II al. 9)
+    s.qt=qt; s.condMontant=cond; s.fixeAmt=fixeAmt; s.E=E;
+    s.irPur=irg;
+    // RREF : RFR − abattement fixe 150-0 D ter ; abattements de durée (1 ter, 1 quater) non déduits
+    const R=i.rni+(i.rfrX||0)+(qt?E/4:E);
+    s.R=R;
+    // IR1 : droits simples, la part se rapportant au revenu exceptionnel est retenue pour 1/4 (art. 224, IV-A, 1°)
+    let ir1;
+    if(s.label.indexOf('PFU')===0){ ir1=irBase+irg*(qt?0.25:1); }
+    else { const rn=i.rni+s.base, DS=irParts(rn,i.nbp), part=rn>0?s.base/rn:0; ir1=DS*(1-part)+DS*part*(qt?0.25:1); }
+    // CEHR1 : sans lissage ; minorée de la part se rapportant aux éléments exclus du RREF
+    // et retenue pour 1/4 pour la part exceptionnelle (art. 224, IV-B ; BOI-IR-CDHR-10 §330, BOI-IR-CDHR-20 §200)
+    let c1=cehrPlain;
+    if(rfr>0){ c1-=cehrPlain*fixeAmt/rfr; if(qt) c1-=0.75*cehrPlain*E/rfr; }
+    s.ir1=ir1; s.cehr1=Math.max(0,c1);
+    s.cehr=ce.c;                                          // CEHR effectivement due (avec lissage éventuel)
+    s.cdhr=cdhr(R,couple,ir1+s.cehr1,i.pac);
     s.ir+=s.cehr+s.cdhr; s.total+=s.cehr+s.cdhr;
   });
   let best=0; scen.forEach((s,k)=>{ if(s.total<scen[best].total) best=k; });
@@ -281,12 +303,52 @@ function alertes(i,v){
   if(i.retr && v.ab.taux>0) a.push('L\'abattement fixe dirigeant et l\'abattement pour durée de détention ne sont pas cumulables : chaque scénario est calculé séparément.');
   if(v.ab.eligible===false) a.push('Titres acquis à compter du 1er janvier 2018 : pas d\'abattement pour durée de détention (hors dispositif dirigeant).');
   { const sc=v.scen[v.best]; if(sc.cdhr>0) a.push('CDHR de '+Math.round(sc.cdhr).toLocaleString('fr-FR')+' € incluse dans la colonne IR pour le régime retenu (art. 224 CGI : 20 % du RFR moins IR et CEHR).'); }
+  if(i.exc){
+    const sc=v.scen[v.best];
+    if(sc.qt) a.push('Revenu exceptionnel : plus-value retenue pour 1/4 dans le revenu de référence, l\'IR et la CEHR de la formule de la CDHR (art. 224, II al. 9 et IV). Condition de nature à justifier (opération ponctuelle, sans opérations de même nature avant et après).');
+    else if(i.moy3!=null&&!sc.condMontant) a.push('Revenu exceptionnel non retenu : plus-value imposable de '+Math.round(sc.base).toLocaleString('fr-FR')+' € inférieure ou égale à la moyenne des revenus nets des 3 dernières années ('+Math.round(i.moy3).toLocaleString('fr-FR')+' €). Le quart n\'est pas applicable.');
+  }
+  if(i.exc&&i.moy3==null) a.push('Moyenne des revenus nets des 3 dernières années non renseignée : la condition de montant du quart n\'est pas vérifiée (BOI-IR-CDHR-20, §60).');
+  if(!isNaN(new Date(i.dCess))&&new Date(i.dCess).getFullYear()<2026) a.push('<b>Hors champ</b> : ce simulateur ne concerne que les cessions réalisées à compter du 1er janvier 2026 (règles de la LFI 2026 pour la CDHR et la CEHR1). Le résultat affiché n\'est pas fiable pour une date antérieure.');
   if(v.cehr>0) a.push('CEHR de '+Math.round(v.cehr).toLocaleString('fr-FR')+' € incluse dans la colonne IR (RFR de '+Math.round(v.rfr).toLocaleString('fr-FR')+' €'+(v.lisse?', avec lissage du II de l\'art. 223 sexies':'')+').');
   else if(v.rfr>(i.sit==='seul'?250000:500000)) a.push('RFR supérieur au seuil de la CEHR.');
-  if(v.tPS!==P.ps) a.push('Cession avant 2025 : prélèvements sociaux à '+P.ps2025+' % (le taux de '+P.ps+' % s\'applique aux plus-values réalisées à compter de 2025).');
   if(i.a732 && i.fonds<=0) a.push('Art. 732 ter coché mais fraction de la valeur des titres représentative du fonds ou de la clientèle = 0 € : renseignez-la dans le champ dédié, l\'abattement (plafonné à '+P.a732.toLocaleString('fr-FR')+' €) porte sur cette valeur.');
   if(i.forme==='SARL' && i.nCed>i.nTot) a.push('Parts cédées supérieures au total des parts.');
   return a;
+}
+
+// --- Alerte barème défavorable / point de bascule ---
+function ecartPaire(i,pvCible,a,b,pur){
+  const j=Object.assign({},i,{prix:pvCible+i.fraisCess+i.pa+i.mv});
+  const w=vendeur(j);
+  return pur ? w.scen[b].irPur-w.scen[a].irPur : w.scen[b].total-w.scen[a].total;
+}
+const GRILLE_BASC=[1000,5000,10000,20000,50000,100000,150000,200000,300000,400000,500000,750000,1000000,1500000,2000000,3000000,5000000,10000000,20000000];
+function seuilBascule(i,a,b,pur){
+  let prev=null;
+  for(const g of GRILLE_BASC){
+    const e=ecartPaire(i,g,a,b,pur);
+    if(e>1){ if(prev===null) return 0;
+      let lo=prev,hi=g;
+      for(let n=0;n<40&&hi-lo>1;n++){ const m=(lo+hi)/2; if(ecartPaire(i,m,a,b,pur)>1) hi=m; else lo=m; }
+      return hi; }
+    prev=g;
+  }
+  return null;
+}
+function analyseBareme(i,v){
+  if(v.pv<=0) return [];
+  const paires=[[0,1]]; if(i.retr) paires.push([2,3]);
+  return paires.map(([a,b])=>{
+    const sa=v.scen[a], sb=v.scen[b];
+    const ecart=sb.total-sa.total;
+    const marge=0.05*Math.max(1,sa.ir);
+    const eco=sb.ecoCsg||0;
+    let niveau;
+    if(ecart>1) niveau=(ecart<=eco)?'orange':'rouge';
+    else niveau=(-ecart<marge)?'orange':'vert';
+    return {a,b,labelA:sa.label,labelB:sb.label,ecart,niveau,eco,seuil:seuilBascule(i,a,b,false),seuilPur:seuilBascule(i,a,b,true),neutre:Math.abs(ecart)<=1&&(sb.cdhr||0)>0,sansAbatt:(b===1&&v.ab.taux===0),eligible:v.ab.eligible};
+  });
 }
 // ENGINE-END
 
@@ -296,7 +358,7 @@ const eur2=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',min
 const nv=id=>parseFloat($(id).value)||0;
 
 const PARAM_DEF=[
-  ['pfuIR','IR du PFU (%)','vérifié'],['ps','Prélèvements sociaux dès 2025 (%)','vérifié'],['ps2025','Prélèvements sociaux avant 2025 (%)','vérifié'],['csgDed','CSG déductible (%)','vérifié'],
+  ['pfuIR','IR du PFU (%)','vérifié'],['ps','Prélèvements sociaux (%)','vérifié'],['csgDed','CSG déductible (%)','vérifié'],
   ['droitSAS','Droit actions SAS (%)','vérifié'],['droitSARL','Droit parts SARL (%)','vérifié'],['abattSARL','Abattement SARL (€)','vérifié'],
   ['droitImmo','Prépondérance immobilière (%)','vérifié'],['minPerc','Minimum de perception (€)','vérifié'],
   ['a732','Abattement 732 ter (€)','vérifié'],['aFixe','Abattement fixe 150-0 D ter (€)','vérifié']
@@ -391,7 +453,7 @@ function buildDetail(i,v,d,k){
   // 4
   S.push({t:'4. Prélèvements sociaux',rows:[
     ['Base','PV brute (l\'abattement de durée ou fixe ne s\'applique pas aux PS)',eur2(pv),'BOI-RPPM-PVBMI-20-40, § 10'],
-    ['Taux',v.tPS===P.ps?'CSG 10,6 % + CRDS 0,5 % + prélèvement de solidarité 7,5 %':'CSG 9,2 % + CRDS 0,5 % + prélèvement de solidarité 7,5 %',pc(v.tPS),'LFSS 2026, art. 12 (18,6 % dès les revenus 2025)'],
+    ['Taux','CSG 10,6 % + CRDS 0,5 % + prélèvement de solidarité 7,5 %',pc(v.tPS),'LFSS 2026, art. 12 (18,6 % dès les revenus 2025)'],
     ['Prélèvements sociaux','base × taux',eur2(s.ps),'']],key:[2]});
   // 5
   S.push({t:'5. Revenu fiscal de référence (RFR)',rows:[
@@ -412,21 +474,26 @@ function buildDetail(i,v,d,k){
   S.push({t:'6. Contribution exceptionnelle sur les hauts revenus (CEHR)',rows:r6,key:[r6.length-1]});
   // 7 CDHR
   const thr=couple?660000:330000, R=s.R;
-  const r7=[['RFR de référence CDHR',isFixe?'RFR − abattement fixe ('+eur2(Math.min(pv,P.aFixe))+'), les abattements de durée restent dans le RFR':'RFR (abattements de durée non déduits)',eur2(R),'CGI art. 224, II'],
-    ['Seuil',(couple?'Imposition commune':'Personne seule'),fmtN(s1)+' €','CGI art. 224, I']];
-  if(R<=s1){ r7.push(['CDHR','RFR ≤ seuil : non applicable',eur2(0),'']); }
-  else {
-    const A=0.2*R; let A2=A;
-    r7.push(['Plancher','20 % × '+eur2(R),eur2(A),'CGI art. 224, III, 1°']);
-    if(R<=thr){ A2=Math.min(A,0.825*(R-s1)); r7.push(['Décote','RFR ≤ '+fmtN(thr)+' € : min(plancher ; 82,5 % × (RFR − '+fmtN(s1)+')) = min('+eur2(A)+' ; '+eur2(0.825*(R-s1))+')',eur2(A2),'CGI art. 224, V']); }
-    else r7.push(['Décote','RFR > '+fmtN(thr)+' € : sans objet',eur2(A2),'CGI art. 224, V']);
-    const forf=couple?12500:0, chg=1500*(i.pac||0), irF=v.irBase+s.irPur, tot=irF+v.cehrPlain+forf+chg;
-    r7.push(['IR du foyer','IR hors PV '+eur2(v.irBase)+' + IR sur la PV '+eur2(s.irPur),eur2(irF),'CGI art. 224, III, 2°']);
-    r7.push(['CEHR (sans lissage)','',eur2(v.cehrPlain),'CGI art. 224, IV, B']);
-    if(couple) r7.push(['Forfait imposition commune','',eur2(forf),'CGI art. 224, III, 2°']);
-    if(chg) r7.push(['Personnes à charge',i.pac+' × 1 500 €',eur2(chg),'CGI art. 224, III, 2°']);
-    r7.push(['Total déduit','',eur2(tot),'']);
-    r7.push(['CDHR','max(0 ; plancher après décote − total déduit)',eur2(Math.max(0,A2-tot)),'']);
+  const r7=[];
+  {
+    const qlib=s.qt?'Oui : retenu pour 1/4':(i.exc?(i.moy3!=null&&!s.condMontant?'Non : PV imposable '+eur2(s.base)+' ≤ moyenne 3 ans '+eur2(i.moy3):'Non'):'Non (case non cochée)');
+    r7.push(['Revenu exceptionnel (quart)',(i.exc&&i.moy3==null)?'Condition de montant non vérifiée (moyenne 3 ans non renseignée)':'',qlib,'CGI art. 224, II al. 9 ; BOI-IR-CDHR-20']);
+    r7.push(['Revenu de référence (RREF)','RNI + réintégrations + '+(s.qt?'1/4 × ':'')+'(PV − abattement fixe '+eur2(s.fixeAmt)+') ; abattements de durée non déduits',eur2(R),'CGI art. 224, II']);
+    r7.push(['Seuil',(couple?'Imposition commune':'Personne seule'),fmtN(s1)+' €','CGI art. 224, I']);
+    if(R<=s1){ r7.push(['CDHR','RREF ≤ seuil : non applicable',eur2(0),'']); }
+    else {
+      const A=0.2*R; let A2=A;
+      r7.push(['Plancher','20 % × '+eur2(R),eur2(A),'CGI art. 224, III, 1°']);
+      if(R<=thr){ A2=Math.min(A,0.825*(R-s1)); r7.push(['Décote','RREF ≤ '+fmtN(thr)+' € : min(plancher ; 82,5 % × (RREF − '+fmtN(s1)+')) = min('+eur2(A)+' ; '+eur2(0.825*(R-s1))+')',eur2(A2),'CGI art. 224, V']); }
+      else r7.push(['Décote','RREF > '+fmtN(thr)+' € : sans objet',eur2(A2),'CGI art. 224, V']);
+      const forf=couple?12500:0, chg=1500*(i.pac||0), tot=s.ir1+s.cehr1+forf+chg;
+      r7.push(['IR1','IR du foyer'+(s.qt?', part exceptionnelle retenue pour 1/4':''),eur2(s.ir1),'CGI art. 224, IV-A, 1°']);
+      r7.push(['CEHR1','Sans lissage, minorée de la part se rapportant à l\'abattement fixe'+(s.qt?' et retenue pour 1/4 sur la part exceptionnelle':''),eur2(s.cehr1),'CGI art. 224, IV-B ; BOI-IR-CDHR-10 §330']);
+      if(couple) r7.push(['Forfait imposition commune','',eur2(forf),'CGI art. 224, III, 2°']);
+      if(chg) r7.push(['Personnes à charge',i.pac+' × 1 500 €',eur2(chg),'CGI art. 224, III, 2°']);
+      r7.push(['Total déduit','IR1 + CEHR1 + forfaits',eur2(tot),'']);
+      r7.push(['CDHR','max(0 ; plancher après décote − total déduit)',eur2(Math.max(0,A2-tot)),'']);
+    }
   }
   S.push({t:'7. Contribution différentielle sur les hauts revenus (CDHR)',rows:r7,key:[r7.length-1]});
   // 8 synthèse
@@ -449,10 +516,37 @@ function detailText(S,titre){
 }
 // DETAIL-END
 
+function texteBareme(r){
+  let cls,h;
+  const e=Math.abs(r.ecart);
+  if(r.neutre){
+    cls='';
+    h=`<b>Barème et PFU équivalents</b> : la CDHR (plancher de 20 % du revenu fiscal de référence) neutralise l'écart entre « ${r.labelA} » et « ${r.labelB} ». `+(r.seuilPur?`Avant CDHR, le barème devient plus coûteux que le PFU au-delà d'environ ${eur(r.seuilPur)} de plus-value imposable ; l'option barème n'apporte alors aucun gain et reste globale et irrévocable.`:`Aucun gain à attendre de l'option barème.`);
+    return {cls,h};
+  }
+  if(r.niveau==='rouge'){
+    cls='bad';
+    h=`<b>Barème défavorable</b> : « ${r.labelB} » coûte ${eur(e)} de plus que « ${r.labelA} » (IR + PS).`;
+  } else if(r.niveau==='orange'){
+    cls='';
+    h=r.ecart>1
+      ? `<b>Barème légèrement défavorable</b> : surcoût brut de ${eur(e)} par rapport à « ${r.labelA} »`+(r.eco>0?`, compensé en partie par la CSG déductible (${eur(r.eco)} d'économie, déjà incluse).`:'.')
+      : `<b>Barème et PFU quasi équivalents</b> : gain de seulement ${eur(e)} pour « ${r.labelB} » ; l'option est globale et irrévocable, le gain est faible.`;
+  } else {
+    cls='good';
+    h=`<b>Barème avantageux</b> : « ${r.labelB} » fait gagner ${eur(e)} par rapport à « ${r.labelA} ».`;
+  }
+  if(r.seuil===null) h+=(r.seuilPur?` <b>Point de bascule</b> : au-delà d'environ ${eur(r.seuilPur)} de plus-value imposable, le barème devient plus coûteux que le PFU avant CDHR ; la CDHR (plancher de 20 % du RFR) neutralise ensuite l'écart.`:` Aucun point de bascule trouvé jusqu'à 20 M€ de plus-value : le barème reste plus avantageux.`);
+  else if(r.seuil===0) h+=` Le barème est défavorable dès les plus petites plus-values avec ces paramètres.`;
+  else h+=` <b>Point de bascule</b> : environ ${eur(r.seuil)} de plus-value imposable. Jusqu'à ce montant le barème n'est pas plus coûteux ; au-delà il l'est.`;
+  if(r.sansAbatt) h+=` <i>Aucun abattement pour durée appliqué (titres acquis depuis 2018 ou durée insuffisante) : le barème est alors rarement favorable.</i>`;
+  h+=` <i>Rappel : l'option barème est globale (tous les revenus du capital de l'année) et irrévocable.</i>`;
+  return {cls,h};
+}
 let synth='', detText='', sel=null, lastV=null;
 function run(){
   const i={forme:$('forme').value,prix:nv('prix'),fraisCess:nv('fraisCess'),pa:nv('pa'),dAcq:$('dAcq').value,dCrea:$('dCrea').value,dCess:$('dCess').value,
-    mv:nv('mv'),rni:nv('rni'),sit:$('sit').value,pac:nv('pac'),rfrX:nv('rfrX'),rfr1:$('rfr1').value===''?null:nv('rfr1'),rfr2:$('rfr2').value===''?null:nv('rfr2'),nbp:Math.max(1,nv('nbp')),pme:$('pme').checked,retr:$('retr').checked,
+    mv:nv('mv'),rni:nv('rni'),sit:$('sit').value,pac:nv('pac'),rfrX:nv('rfrX'),rfr1:$('rfr1').value===''?null:nv('rfr1'),rfr2:$('rfr2').value===''?null:nv('rfr2'),nbp:Math.max(1,nv('nbp')),pme:$('pme').checked,retr:$('retr').checked,exc:$('exc').checked,moy3:$('moy3').value===''?null:nv('moy3'),
     nCed:nv('nCed'),nTot:Math.max(1,nv('nTot')),charges:nv('charges'),fraisAcq:nv('fraisAcq'),fonds:nv('fonds'),
     immo:$('immo').checked,a732:$('a732').checked};
   const v=vendeur(i), d=droitsAcheteur(i), b=v.scen[v.best];
@@ -507,10 +601,13 @@ function run(){
     } else { el.hidden=true; el.textContent=''; }
   }
   $('alertes').innerHTML=alertes(i,v).map(x=>`<div class="alert">${x}</div>`).join('');
+  const ab=analyseBareme(i,v).map(r=>({r,t:texteBareme(r)}));
+  $('alerteBareme').innerHTML=ab.map(x=>`<div class="alert ${x.t.cls}">${x.t.h}</div>`).join('');
+  const abTxt=ab.map(x=>'\n'+x.t.h.replace(/<[^>]+>/g,'')).join('');
 
   synth=`Cession ${i.forme} — prix ${eur(i.prix)}\nPlus-value imposable : ${eur(v.pv)} (détention ${v.ab.ans} ans)\n`+
     v.scen.map((s,k)=>`${k===v.best?'► ':'  '}${s.label} : IR ${eur(s.ir)} + PS ${eur(s.ps)} = ${eur(s.total)}`).join('\n')+
-    `\nDroits d'enregistrement : ${eur2(d.droit)}\nCoût total acquéreur : ${eur(coutAcq)}`;
+    abTxt+`\nDroits d'enregistrement : ${eur2(d.droit)}\nCoût total acquéreur : ${eur(coutAcq)}`;
 }
 document.addEventListener('input',e=>{ if(!e.target.dataset.p&&!e.target.dataset.s&&!e.target.dataset.t) run(); });
 document.addEventListener('change',run);
